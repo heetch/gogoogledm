@@ -8,21 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const (
 	base_url = "https://maps.googleapis.com/maps/api/distancematrix/json?"
 )
-
-// Users of the free API:
-// 100 elements per query.
-// 100 elements per 10 seconds.
-// 2,500 elements per 24 hour period.
-
-// Google Maps API for Work customers:
-// 625 elements per query.
-// 1,000 elements per 10 seconds.
-// 100,000 elements per 24 hour period.
 
 // Distance Matrix API URLs are restricted to approximately 2000 characters, after URL Encoding.
 
@@ -41,91 +32,30 @@ const (
 // NOT_FOUND indicates that the origin and/or destination of this pairing could not be geocoded.
 // ZERO_RESULTS indicates no route could be found between the origin and destination.
 
-type Trip struct {
-	Origins      []Coordinates
-	Destinations []Coordinates
-	Mode         string
-}
-
-type Coordinates struct {
-	Latitude  float64
-	Longitude float64
-}
-
-func (coordinates Coordinates) String() string {
-	return fmt.Sprintf("%v,%v", coordinates.Latitude, coordinates.Longitude)
-}
-
-type ApiResponse struct {
-	DestinationAddresses []string `json:"destination_addresses"`
-	OriginAddresses      []string `json:"origin_addresses"`
-	Rows                 []struct {
-		Elements []struct {
-			Distance struct {
-				Text  string
-				Value float64
-			}
-			Duration struct {
-				Text  string
-				Value float64
-			}
-			Fare struct {
-				Currency string
-				Value    float64
-			}
-			Status string
-		}
-	}
-	Status string
-}
-
-type DistanceMatrixAPI struct {
-	apiKey       string
-	languageCode string
-	unitSystem   UnitSystem
-}
-
-type UnitSystem int
-
-const (
-	MetricUnit UnitSystem = 1 + iota
-	ImperialUnit
-)
-
-var unitSystems = []string{
-	"metric",
-	"imperial",
-}
-
-func (unitSystem UnitSystem) String() string {
-	return unitSystems[unitSystem-1]
-}
-
-type TransportMode int
-
-const (
-	Walking TransportMode = 1 + iota
-	Bicycling
-	Transit
-	Driving
-)
-
-var transportModes = []string{
-	"walking",
-	"bicycling",
-	"transit",
-	"driving",
-}
-
-func (transportMode TransportMode) String() string {
-	return transportModes[transportMode-1]
-}
-
-func NewDistanceMatrixAPI(apiKey string, languageCode string, unitSystem UnitSystem) *DistanceMatrixAPI {
+func NewDistanceMatrixAPI(apiKey string, accountType AccountType, languageCode string, unitSystem UnitSystem) *DistanceMatrixAPI {
 	api := DistanceMatrixAPI{
 		apiKey:       apiKey,
 		languageCode: languageCode,
 		unitSystem:   unitSystem,
+		timeToWait:   10 * time.Second,
+	}
+
+	// Users of the free API:
+	// 100 elements per query.
+	// 100 elements per 10 seconds.
+	// 2,500 elements per 24 hour period.
+
+	// Google Maps API for Work customers:
+	// 625 elements per query.
+	// 1,000 elements per 10 seconds.
+	// 100,000 elements per 24 hour period.
+	switch accountType {
+	case FreeAccount:
+		api.maxElementsPerQuery = 100
+	case GoogleForWorkAccount:
+		api.maxElementsPerQuery = 625
+	default:
+		panic("Unknown accountType")
 	}
 
 	return &api
@@ -137,11 +67,14 @@ func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations [
 	q.Add("mode", transportMode.String())
 	q.Add("language", api.languageCode)
 	q.Add("units", api.unitSystem.String())
+
+	//TODO: Calculate element count to be returned and split into seperate API calls if required
 	q.Add("origins", convertCoordinateSliceToString(origins))
 	q.Add("destinations", convertCoordinateSliceToString(destinations))
 
 	url := base_url + q.Encode()
 	log.Println(url)
+	log.Println(len(url))
 
 	resp, err := http.Get(url)
 	if err != nil {

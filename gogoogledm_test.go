@@ -7,7 +7,7 @@ import (
 
 func TestGetDistances(t *testing.T) {
 	apiKey := ""
-	api := NewDistanceMatrixAPI(apiKey, "en-GB", ImperialUnit)
+	api := NewDistanceMatrixAPI(apiKey, FreeAccount, "en-GB", ImperialUnit)
 
 	origins := []Coordinates{
 		Coordinates{
@@ -49,6 +49,37 @@ func TestGetDistances(t *testing.T) {
 	}
 }
 
+func TestGetDistancesWithOver100Elements(t *testing.T) {
+	apiKey := ""
+	api := NewDistanceMatrixAPI(apiKey, FreeAccount, "en-GB", ImperialUnit)
+
+	origins := []Coordinates{
+		Coordinates{
+			Latitude:  55.85,
+			Longitude: -4.31,
+		},
+	}
+
+	var destinations []Coordinates
+	for i := 0; i < 101; i++ {
+		destination := Coordinates{
+			Latitude:  53.47,
+			Longitude: -2.33,
+		}
+		destinations = append(destinations, destination)
+	}
+	log.Println("...")
+	log.Println(len(destinations))
+
+	resp, err := api.GetDistances(origins, destinations, Driving)
+	log.Println(resp)
+	log.Println(err)
+	if err != nil {
+
+		t.Error("Error getting distances")
+	}
+}
+
 func TestConvertCoordinateSliceToString(t *testing.T) {
 	coordinates := []Coordinates{
 		Coordinates{
@@ -62,7 +93,6 @@ func TestConvertCoordinateSliceToString(t *testing.T) {
 	}
 
 	result := convertCoordinateSliceToString(coordinates)
-	log.Println(result)
 	if result != "53.4720286,-2.3308237|51.556021,-0.279519" {
 		t.Error("Coordinates didnt match expected string")
 	}
