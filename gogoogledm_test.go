@@ -6,7 +6,8 @@ import (
 )
 
 func TestGetDistances(t *testing.T) {
-	api := NewDistanceMatrixAPI("AIzaSyALvpFDDyOcjp8uHTixiOazUPoN3F5IL5U", "en-GB", ImperialUnit)
+	apiKey := ""
+	api := NewDistanceMatrixAPI(apiKey, "en-GB", ImperialUnit)
 
 	origins := []Coordinates{
 		Coordinates{

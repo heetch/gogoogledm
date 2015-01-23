@@ -191,13 +191,3 @@ func convertCoordinateSliceToString(coordinates []Coordinates) (result string) {
 
 	return result
 }
-
-// type directions_response struct {
-// 	Routes []struct {
-// 		Legs []struct {
-// 			Distance struct {
-// 				Value uint64
-// 			}
-// 		}
-// 	}
-// }
