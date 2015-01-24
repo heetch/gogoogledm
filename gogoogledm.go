@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -69,8 +70,9 @@ func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations [
 	q.Add("units", api.unitSystem.String())
 
 	//TODO: Calculate element count to be returned and split into seperate API calls if required
-	q.Add("origins", convertCoordinateSliceToString(origins))
-	q.Add("destinations", convertCoordinateSliceToString(destinations))
+
+	q.Add("origins", coordinatesSliceToString(origins))
+	q.Add("destinations", coordinatesSliceToString(destinations))
 
 	url := base_url + q.Encode()
 	log.Println(url)
@@ -94,6 +96,18 @@ func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations [
 	return &apiResponse, nil
 }
 
+func (api *DistanceMatrixAPI) numberOfApiCallsRequired(origins []Coordinates, destinations []Coordinates) float64 {
+	elementCount := float64(len(origins) * len(destinations))
+	apiCallsRequired := math.Floor(elementCount / api.maxElementsPerQuery)
+	dividesExactly := math.Mod(elementCount, api.maxElementsPerQuery) == 0
+
+	if !dividesExactly {
+		apiCallsRequired += 1
+	}
+
+	return apiCallsRequired
+}
+
 func validateResponse(origins []Coordinates, destinations []Coordinates, apiResponse ApiResponse) error {
 	if apiResponse.Status != "OK" {
 		errors.New(fmt.Sprintf("API returned error: %s", apiResponse.Status))
@@ -115,7 +129,7 @@ func validateResponse(origins []Coordinates, destinations []Coordinates, apiResp
 	return nil
 }
 
-func convertCoordinateSliceToString(coordinates []Coordinates) (result string) {
+func coordinatesSliceToString(coordinates []Coordinates) (result string) {
 	seperator := "|"
 	for _, c := range coordinates {
 		result += c.String() + seperator

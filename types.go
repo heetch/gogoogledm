@@ -7,7 +7,7 @@ import (
 
 type DistanceMatrixAPI struct {
 	apiKey              string
-	maxElementsPerQuery int
+	maxElementsPerQuery float64
 	timeToWait          time.Duration
 	languageCode        string
 	unitSystem          UnitSystem

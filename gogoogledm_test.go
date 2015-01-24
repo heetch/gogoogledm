@@ -80,7 +80,7 @@ func TestGetDistancesWithOver100Elements(t *testing.T) {
 	}
 }
 
-func TestConvertCoordinateSliceToString(t *testing.T) {
+func TestCoordinatesSliceToString(t *testing.T) {
 	coordinates := []Coordinates{
 		Coordinates{
 			Latitude:  53.4720286,
@@ -92,9 +92,58 @@ func TestConvertCoordinateSliceToString(t *testing.T) {
 		},
 	}
 
-	result := convertCoordinateSliceToString(coordinates)
+	result := coordinatesSliceToString(coordinates)
 	if result != "53.4720286,-2.3308237|51.556021,-0.279519" {
 		t.Error("Coordinates didnt match expected string")
+	}
+}
+
+func TestNumberOfApiCallsRequired(t *testing.T) {
+	apiKey := ""
+	api := NewDistanceMatrixAPI(apiKey, FreeAccount, "en-GB", ImperialUnit)
+
+	origins := []Coordinates{
+		Coordinates{
+			Latitude:  55.853551,
+			Longitude: -4.311093,
+		},
+	}
+
+	var destinations []Coordinates
+	for i := 0; i < 101; i++ {
+		destination := Coordinates{
+			Latitude:  53.47,
+			Longitude: -2.33,
+		}
+		destinations = append(destinations, destination)
+	}
+
+	count := api.numberOfApiCallsRequired(origins, destinations)
+	log.Println(count)
+	if count != 2 {
+		t.Error("Number of API requests does not equal expected value")
+	}
+
+	origins = []Coordinates{
+		Coordinates{
+			Latitude:  55.853551,
+			Longitude: -4.311093,
+		},
+	}
+
+	destinations = nil
+	for i := 0; i < 100; i++ {
+		destination := Coordinates{
+			Latitude:  53.47,
+			Longitude: -2.33,
+		}
+		destinations = append(destinations, destination)
+	}
+
+	count = api.numberOfApiCallsRequired(origins, destinations)
+	log.Println(count)
+	if count != 1 {
+		t.Error("Number of API requests does not equal expected value")
 	}
 
 }
