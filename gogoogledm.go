@@ -53,9 +53,9 @@ func NewDistanceMatrixAPI(apiKey string, accountType AccountType, languageCode s
 	// 100,000 elements per 24 hour period.
 	switch accountType {
 	case FreeAccount:
-		api.maxElementsPerQuery = 100
+		api.maxElementsPerRequest = 100
 	case GoogleForWorkAccount:
-		api.maxElementsPerQuery = 625
+		api.maxElementsPerRequest = 625
 	default:
 		panic("Unknown accountType")
 	}
@@ -63,46 +63,75 @@ func NewDistanceMatrixAPI(apiKey string, accountType AccountType, languageCode s
 	return &api
 }
 
-func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*[]ApiResponse, error) {
-	baseUrlValues := url.Values{}
-	baseUrlValues.Add("key", api.apiKey)
-	baseUrlValues.Add("language", api.languageCode)
-	baseUrlValues.Add("units", api.unitSystem.String())
-	baseUrlValues.Add("mode", transportMode.String())
+func (api *DistanceMatrixAPI) buildBaseUrlParams() url.Values {
+	params := url.Values{}
+	params.Add("key", api.apiKey)
+	params.Add("language", api.languageCode)
+	params.Add("units", api.unitSystem.String())
 
-	apiRequestCount := numberOfApiCallsRequired(origins, destinations, api.maxElementsPerQuery, baseUrlValues)
-	apiCalls := api.apiCallSplitter(origins, destinations, apiRequestCount)
+	return params
+}
 
-	var apiResponses []ApiResponse
-	for _, apiCall := range apiCalls {
-		uv := baseUrlValues
-		uv.Add("origins", coordinatesSliceToString(apiCall.Origins))
-		uv.Add("destinations", coordinatesSliceToString(apiCall.Destinations))
-		url := base_url + baseUrlValues.Encode()
+func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
+	apiRequestCount := api.numberOfApiCallsRequired(origins, destinations, transportMode)
+	groupedCoordinates := api.groupCoordinates(origins, destinations, apiRequestCount)
 
-		resp, err := http.Get(url)
+	var joinedResponse ApiResponse
+	remaining := api.maxElementsPerRequest
+	for _, group := range groupedCoordinates {
+		need := (len(group.Origins) * len(group.Destinations))
+		log.Println(need)
+		if remaining < need {
+			log.Println("sleeping")
+			time.Sleep(api.timeToWait)
+			remaining = api.maxElementsPerRequest
+		}
+
+		resp, err := api.sendRequest(group.Origins, group.Destinations, transportMode)
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
 
-		var apiResponse ApiResponse
-		if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-			return nil, err
-		}
+		joinedResponse.Status = resp.Status
+		joinedResponse.OriginAddresses = append(joinedResponse.OriginAddresses, resp.OriginAddresses...)
+		joinedResponse.DestinationAddresses = append(joinedResponse.DestinationAddresses, resp.DestinationAddresses...)
+		joinedResponse.Rows = append(joinedResponse.Rows, resp.Rows...)
 
-		if err = validateResponse(origins, destinations, apiResponse); err != nil {
-			return nil, err
-		}
-
-		apiResponses = append(apiResponses, apiResponse)
+		remaining -= need
 	}
 
-	return &apiResponses, nil
+	return &joinedResponse, nil
 }
 
-func (api *DistanceMatrixAPI) apiCallSplitter(origins []Coordinates, destinations []Coordinates, apiRequestCount int) (apiCalls []ApiCall) {
-	if apiRequestCount == 1 {
+func (api *DistanceMatrixAPI) sendRequest(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
+	urlValues := api.buildBaseUrlParams()
+	urlValues.Add("mode", transportMode.String())
+	urlValues.Add("origins", coordinatesSliceToString(origins))
+	urlValues.Add("destinations", coordinatesSliceToString(destinations))
+	url := base_url + urlValues.Encode()
+	log.Println(url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var apiResponse ApiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return nil, err
+	}
+
+	if err = validateResponse(origins, destinations, apiResponse); err != nil {
+		return nil, err
+	}
+
+	return &apiResponse, nil
+}
+
+func (api *DistanceMatrixAPI) groupCoordinates(origins []Coordinates, destinations []Coordinates, maxGroupSize int) (apiCalls []ApiCall) {
+	if maxGroupSize == 1 {
 		apiCalls = append(apiCalls, ApiCall{origins, destinations})
 		return apiCalls
 	}
@@ -112,7 +141,7 @@ func (api *DistanceMatrixAPI) apiCallSplitter(origins []Coordinates, destination
 
 	if destinationsSize > originsSize {
 		//Split destinations
-		maxBlockSize := math.Floor(float64(destinationsSize) / float64(apiRequestCount))
+		maxBlockSize := math.Floor(float64(destinationsSize) / float64(maxGroupSize))
 		blocks := splitSliceIntoBlocks(destinations, int(maxBlockSize))
 
 		for _, b := range blocks {
@@ -123,7 +152,7 @@ func (api *DistanceMatrixAPI) apiCallSplitter(origins []Coordinates, destination
 		}
 	} else {
 		//Split origins
-		maxBlockSize := math.Floor(float64(originsSize) / float64(apiRequestCount))
+		maxBlockSize := math.Floor(float64(originsSize) / float64(maxGroupSize))
 		blocks := splitSliceIntoBlocks(origins, int(maxBlockSize))
 
 		for _, o := range blocks {
@@ -137,20 +166,23 @@ func (api *DistanceMatrixAPI) apiCallSplitter(origins []Coordinates, destination
 	return apiCalls
 }
 
-func numberOfApiCallsRequired(origins []Coordinates, destinations []Coordinates, maxElementsPerCall int, baseUrlValues url.Values) int {
+func (api *DistanceMatrixAPI) numberOfApiCallsRequired(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) int {
+	urlValues := api.buildBaseUrlParams()
+	urlValues.Add("mode", transportMode.String())
+
 	//Number of calls required by origin/destination combination
 	elementCount := float64(len(origins) * len(destinations))
-	apiCallsRequired := math.Ceil(elementCount / float64(maxElementsPerCall))
+	apiCallsRequired := math.Ceil(elementCount / float64(api.maxElementsPerRequest))
 	log.Printf("apiCallsRequired: %v", apiCallsRequired)
 
 	//Number of calls required due to url length limitation
-	baseUrlValues.Add("origins", coordinatesSliceToString(origins))
-	baseUrlValues.Add("destinations", coordinatesSliceToString(destinations))
-	url := base_url + baseUrlValues.Encode()
+	urlValues.Add("origins", coordinatesSliceToString(origins))
+	urlValues.Add("destinations", coordinatesSliceToString(destinations))
+	url := base_url + urlValues.Encode()
 	urlLength := len(url)
-	log.Printf("urlLength: %v", urlLength)
-
 	apiCallsRequiredByUrl := math.Ceil(float64(urlLength) / float64(maxUrlLength))
+	log.Printf("urlLength: %v", urlLength)
+	log.Printf("apiCallsRequiredByUrl: %v", apiCallsRequiredByUrl)
 
 	return int(math.Max(apiCallsRequired, apiCallsRequiredByUrl))
 }
@@ -159,6 +191,8 @@ func validateResponse(origins []Coordinates, destinations []Coordinates, apiResp
 	if apiResponse.Status != "OK" {
 		errors.New(fmt.Sprintf("API returned error: %s", apiResponse.Status))
 	}
+	log.Printf("len(apiResponse.Rows): %v", len(apiResponse.Rows))
+	log.Printf("len(origins): %v", len(origins))
 	if len(apiResponse.Rows) != len(origins) {
 		return errors.New("API returned less rows than origins requested")
 	}

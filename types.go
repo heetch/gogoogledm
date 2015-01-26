@@ -6,11 +6,11 @@ import (
 )
 
 type DistanceMatrixAPI struct {
-	apiKey              string
-	maxElementsPerQuery int
-	timeToWait          time.Duration
-	languageCode        string
-	unitSystem          UnitSystem
+	apiKey                string
+	maxElementsPerRequest int
+	timeToWait            time.Duration
+	languageCode          string
+	unitSystem            UnitSystem
 }
 
 type ApiResponse struct {
