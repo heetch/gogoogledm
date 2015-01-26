@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	base_url = "https://maps.googleapis.com/maps/api/distancematrix/json?"
+	base_url     = "https://maps.googleapis.com/maps/api/distancematrix/json?"
+	maxUrlLength = 2000
 )
 
 // Distance Matrix API URLs are restricted to approximately 2000 characters, after URL Encoding.
@@ -62,50 +63,96 @@ func NewDistanceMatrixAPI(apiKey string, accountType AccountType, languageCode s
 	return &api
 }
 
-func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
-	q := url.Values{}
-	q.Add("key", api.apiKey)
-	q.Add("mode", transportMode.String())
-	q.Add("language", api.languageCode)
-	q.Add("units", api.unitSystem.String())
+func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*[]ApiResponse, error) {
+	baseUrlValues := url.Values{}
+	baseUrlValues.Add("key", api.apiKey)
+	baseUrlValues.Add("language", api.languageCode)
+	baseUrlValues.Add("units", api.unitSystem.String())
+	baseUrlValues.Add("mode", transportMode.String())
 
-	//TODO: Calculate element count to be returned and split into seperate API calls if required
+	apiRequestCount := numberOfApiCallsRequired(origins, destinations, api.maxElementsPerQuery, baseUrlValues)
+	apiCalls := api.apiCallSplitter(origins, destinations, apiRequestCount)
 
-	q.Add("origins", coordinatesSliceToString(origins))
-	q.Add("destinations", coordinatesSliceToString(destinations))
+	var apiResponses []ApiResponse
+	for _, apiCall := range apiCalls {
+		uv := baseUrlValues
+		uv.Add("origins", coordinatesSliceToString(apiCall.Origins))
+		uv.Add("destinations", coordinatesSliceToString(apiCall.Destinations))
+		url := base_url + baseUrlValues.Encode()
 
-	url := base_url + q.Encode()
-	log.Println(url)
-	log.Println(len(url))
+		resp, err := http.Get(url)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
 
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
+		var apiResponse ApiResponse
+		if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+			return nil, err
+		}
+
+		if err = validateResponse(origins, destinations, apiResponse); err != nil {
+			return nil, err
+		}
+
+		apiResponses = append(apiResponses, apiResponse)
 	}
-	defer resp.Body.Close()
 
-	var apiResponse ApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, err
-	}
-
-	if err = validateResponse(origins, destinations, apiResponse); err != nil {
-		return nil, err
-	}
-
-	return &apiResponse, nil
+	return &apiResponses, nil
 }
 
-func (api *DistanceMatrixAPI) numberOfApiCallsRequired(origins []Coordinates, destinations []Coordinates) float64 {
-	elementCount := float64(len(origins) * len(destinations))
-	apiCallsRequired := math.Floor(elementCount / api.maxElementsPerQuery)
-	dividesExactly := math.Mod(elementCount, api.maxElementsPerQuery) == 0
-
-	if !dividesExactly {
-		apiCallsRequired += 1
+func (api *DistanceMatrixAPI) apiCallSplitter(origins []Coordinates, destinations []Coordinates, apiRequestCount int) (apiCalls []ApiCall) {
+	if apiRequestCount == 1 {
+		apiCalls = append(apiCalls, ApiCall{origins, destinations})
+		return apiCalls
 	}
 
-	return apiCallsRequired
+	destinationsSize := len(destinations)
+	originsSize := len(origins)
+
+	if destinationsSize > originsSize {
+		//Split destinations
+		maxBlockSize := math.Floor(float64(destinationsSize) / float64(apiRequestCount))
+		blocks := splitSliceIntoBlocks(destinations, int(maxBlockSize))
+
+		for _, b := range blocks {
+			apiCalls = append(apiCalls, ApiCall{
+				Origins:      origins,
+				Destinations: b,
+			})
+		}
+	} else {
+		//Split origins
+		maxBlockSize := math.Floor(float64(originsSize) / float64(apiRequestCount))
+		blocks := splitSliceIntoBlocks(origins, int(maxBlockSize))
+
+		for _, o := range blocks {
+			apiCalls = append(apiCalls, ApiCall{
+				Origins:      o,
+				Destinations: destinations,
+			})
+		}
+	}
+
+	return apiCalls
+}
+
+func numberOfApiCallsRequired(origins []Coordinates, destinations []Coordinates, maxElementsPerCall int, baseUrlValues url.Values) int {
+	//Number of calls required by origin/destination combination
+	elementCount := float64(len(origins) * len(destinations))
+	apiCallsRequired := math.Ceil(elementCount / float64(maxElementsPerCall))
+	log.Printf("apiCallsRequired: %v", apiCallsRequired)
+
+	//Number of calls required due to url length limitation
+	baseUrlValues.Add("origins", coordinatesSliceToString(origins))
+	baseUrlValues.Add("destinations", coordinatesSliceToString(destinations))
+	url := base_url + baseUrlValues.Encode()
+	urlLength := len(url)
+	log.Printf("urlLength: %v", urlLength)
+
+	apiCallsRequiredByUrl := math.Ceil(float64(urlLength) / float64(maxUrlLength))
+
+	return int(math.Max(apiCallsRequired, apiCallsRequiredByUrl))
 }
 
 func validateResponse(origins []Coordinates, destinations []Coordinates, apiResponse ApiResponse) error {
@@ -118,11 +165,6 @@ func validateResponse(origins []Coordinates, destinations []Coordinates, apiResp
 	for _, r := range apiResponse.Rows {
 		if len(r.Elements) != len(destinations) {
 			return errors.New("API returned less elements than destinations requested")
-		}
-		for ei, e := range r.Elements {
-			if e.Status != "OK" {
-				errors.New(fmt.Sprintf("API returned error in element(%v): %s", ei, apiResponse.Status))
-			}
 		}
 	}
 
@@ -137,4 +179,23 @@ func coordinatesSliceToString(coordinates []Coordinates) (result string) {
 	result = strings.TrimSuffix(result, seperator)
 
 	return result
+}
+
+func splitSliceIntoBlocks(slice []Coordinates, maxBlockSize int) [][]Coordinates {
+	sliceSize := len(slice)
+	numberOfBlocks := int(math.Ceil(float64(sliceSize) / float64(maxBlockSize)))
+	blocks := make([][]Coordinates, numberOfBlocks)
+
+	i := 0
+	for remaining := sliceSize; remaining > 0; remaining -= maxBlockSize {
+		start := i * maxBlockSize
+		if remaining < maxBlockSize {
+			maxBlockSize = remaining
+		}
+		blocks[i] = make([]Coordinates, maxBlockSize)
+		blocks[i] = slice[start : start+maxBlockSize]
+		i++
+	}
+
+	return blocks
 }
