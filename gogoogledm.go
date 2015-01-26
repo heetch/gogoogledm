@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -80,9 +79,7 @@ func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations [
 	remaining := api.maxElementsPerRequest
 	for _, group := range groupedCoordinates {
 		need := (len(group.Origins) * len(group.Destinations))
-		log.Println(need)
 		if remaining < need {
-			log.Println("sleeping")
 			time.Sleep(api.timeToWait)
 			remaining = api.maxElementsPerRequest
 		}
@@ -109,7 +106,6 @@ func (api *DistanceMatrixAPI) sendRequest(origins []Coordinates, destinations []
 	urlValues.Add("origins", coordinatesSliceToString(origins))
 	urlValues.Add("destinations", coordinatesSliceToString(destinations))
 	url := base_url + urlValues.Encode()
-	log.Println(url)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -173,7 +169,6 @@ func (api *DistanceMatrixAPI) numberOfApiCallsRequired(origins []Coordinates, de
 	//Number of calls required by origin/destination combination
 	elementCount := float64(len(origins) * len(destinations))
 	apiCallsRequired := math.Ceil(elementCount / float64(api.maxElementsPerRequest))
-	log.Printf("apiCallsRequired: %v", apiCallsRequired)
 
 	//Number of calls required due to url length limitation
 	urlValues.Add("origins", coordinatesSliceToString(origins))
@@ -181,8 +176,6 @@ func (api *DistanceMatrixAPI) numberOfApiCallsRequired(origins []Coordinates, de
 	url := base_url + urlValues.Encode()
 	urlLength := len(url)
 	apiCallsRequiredByUrl := math.Ceil(float64(urlLength) / float64(maxUrlLength))
-	log.Printf("urlLength: %v", urlLength)
-	log.Printf("apiCallsRequiredByUrl: %v", apiCallsRequiredByUrl)
 
 	return int(math.Max(apiCallsRequired, apiCallsRequiredByUrl))
 }
@@ -191,8 +184,6 @@ func validateResponse(origins []Coordinates, destinations []Coordinates, apiResp
 	if apiResponse.Status != "OK" {
 		errors.New(fmt.Sprintf("API returned error: %s", apiResponse.Status))
 	}
-	log.Printf("len(apiResponse.Rows): %v", len(apiResponse.Rows))
-	log.Printf("len(origins): %v", len(origins))
 	if len(apiResponse.Rows) != len(origins) {
 		return errors.New("API returned less rows than origins requested")
 	}

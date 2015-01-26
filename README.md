@@ -14,14 +14,16 @@ Full details of the Google Matrix API is here https://developers.google.com/maps
     package main
 
     import (
+        "fmt"
         . "github.com/jondunning/gogoogledm"
     )
 
     func main() {
-        apiKey := "your-google-api-key" //obtain your key from Google Developers Console
-        languageCode := "en-GB"         //codes available here https://developers.google.com/maps/faq#languagesupport
-        unitSystem := ImperialUnit      //ImperialUnit or MetricUnit
-        api := gogoogledm.NewDistanceMatrixAPI(apiKey, languageCode, unitSystem)
+        apiKey := ""               //obtain your key from Google Developers Console
+        accountType := FreeAccount //FreeAccount or GoogleForWorkAccount
+        languageCode := "en-GB"    //codes available here https://developers.google.com/maps/faq#languagesupport
+        unitSystem := ImperialUnit //ImperialUnit or MetricUnit
+        api := NewDistanceMatrixAPI(apiKey, accountType, languageCode, unitSystem)
 
         origins := []Coordinates{
             Coordinates{
@@ -43,6 +45,15 @@ Full details of the Google Matrix API is here https://developers.google.com/maps
 
         transportMode := Driving //Driving, Walking and Bicycling
         resp, err := api.GetDistances(origins, destinations, transportMode)
+        if err != nil {
+            panic(err)
+        }
+
+        for _, r := range resp.Rows {
+            for _, e := range r.Elements {
+                fmt.Printf("Status=%s, Distance=%s, Duration=%s", e.Status, e.Distance.Text, e.Duration.Text)
+            }
+        }
     }
 
 ## Limitations
