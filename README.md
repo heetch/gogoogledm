@@ -7,7 +7,7 @@ Full details of the Google Matrix API is here https://developers.google.com/maps
 
 ## Installation
 
-  go get github.com/jondunning/gogoogledm
+    go get github.com/jondunning/gogoogledm
 
 ## Usage
 
