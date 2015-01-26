@@ -212,31 +212,3 @@ func TestSplitSliceIntoBlocks(t *testing.T) {
 		t.Error("Block is not as expected")
 	}
 }
-
-func TestDDD(t *testing.T) {
-	// Pick the largest
-	// Divide by the number of calls required and and add remainder to last api call
-	//
-	//
-	// 9 origins, 13 destinations = 117 elements (100 max per call) = 2 api calls
-	// 1 origins, 101 destinations = 101 elements (100 max per call) = 2 api calls
-	// 101 origins, 1 destinations = 101 elements (100 max per call) = 2 api calls
-	// 11 origins, 11 destinations, 121 elements (100 max per call) = 2 api calls
-	// 1 origin, 2 destinations, 2 elements (1 max per call) = 2 api calls
-	// 3 origin, 1 destinations, 3 elements (1 max per call) = 3 api calls
-
-	// origins := float64(9)
-	// destinations := float64(13)
-	// //elements := origins * destinations //117
-	// maxElementsPerApiCall := float64(100)
-	// //apiCallsRequired := 2
-
-	// //Work out the max calls that will fit into the first API call
-	// maxOrigins := math.Floor(float64(maxElementsPerApiCall / origins))
-	// log.Println(maxOrigins)
-	// maxDistinations := math.Floor(float64(maxElementsPerApiCall / destinations))
-	// log.Println(maxDistinations)
-
-	// log.Println(maxOrigins * origins)
-	// log.Println(maxDistinations * destinations)
-}
