@@ -1,7 +1,9 @@
 # Google Distance Matrix API Library for Go
 
 This library allows you obtain the distance and travel times between multiple origins and destinations via various travel methods. 
-The library handles Google API rate limiting and max encoded url length (Details found here https://developers.google.com/maps/documentation/distancematrix/#Limits) for you so you can just implement and enjoy :D
+The library handles Google API rate limiting and max encoded url length for you so you can just implement and enjoy :D
+
+Limitations found here https://developers.google.com/maps/documentation/distancematrix/#Limits
 
 Full details of the Google Matrix API is here https://developers.google.com/maps/documentation/distancematrix
 
