@@ -47,8 +47,8 @@ Full details of the Google Matrix API is here https://developers.google.com/maps
 
 ## Limitations
 
-1.) The library only implements origins and destinations in a coordinate format
-2.) Currently only supports Driving, Walking and Bicycling travel modes
+1. The library only implements origins and destinations in a coordinate format
+2. Currently only supports Driving, Walking and Bicycling travel modes
 
 ## Contributing
 
