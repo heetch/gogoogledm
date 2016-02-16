@@ -182,7 +182,7 @@ func (api *DistanceMatrixAPI) numberOfApiCallsRequired(origins []Coordinates, de
 
 func validateResponse(origins []Coordinates, destinations []Coordinates, apiResponse ApiResponse) error {
 	if apiResponse.Status != "OK" {
-		errors.New(fmt.Sprintf("API returned error: %s", apiResponse.Status))
+		return errors.New(fmt.Sprintf("API returned error: %s", apiResponse.Status))
 	}
 	if len(apiResponse.Rows) != len(origins) {
 		return errors.New("API returned less rows than origins requested")
