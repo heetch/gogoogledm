@@ -3,7 +3,6 @@ package gogoogledm
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 	"net/http"
 	"net/url"
@@ -14,6 +13,16 @@ import (
 const (
 	base_url     = "https://maps.googleapis.com/maps/api/distancematrix/json?"
 	maxUrlLength = 2000
+)
+
+var (
+	ErrInvalidRequest         = errors.New("provided request invalid")
+	ErrMaxElementsExceeded    = errors.New("product of origins and destinations exceeds the per-query limit")
+	ErrOverQueryLimit         = errors.New("too many requests from your application within the allowed time period")
+	ErrRequestDenied          = errors.New("service denied use of the distance matrix service by your application")
+	ErrUnkownError            = errors.New("distance matrix request could not be processed due to a server error")
+	ErrResponseRowsMismatch   = errors.New("invalid response: less rows than origins requested")
+	ErrInvalidElementMismatch = errors.New("invalid response: less elements than destinations requested")
 )
 
 // Distance Matrix API URLs are restricted to approximately 2000 characters, after URL Encoding.
@@ -109,7 +118,6 @@ func (api *DistanceMatrixAPI) sendRequest(origins []Coordinates, destinations []
 
 	resp, err := http.Get(url)
 	if err != nil {
-
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -181,15 +189,35 @@ func (api *DistanceMatrixAPI) numberOfApiCallsRequired(origins []Coordinates, de
 }
 
 func validateResponse(origins []Coordinates, destinations []Coordinates, apiResponse ApiResponse) error {
-	if apiResponse.Status != "OK" {
-		return errors.New(fmt.Sprintf("API returned error: %s", apiResponse.Status))
+	switch apiResponse.Status {
+	case "OK":
+		// indicates the response contains a valid result.
+		// This is not an error. We do not return on purpose here.
+	case "INVALID_REQUEST":
+		// indicates that the provided request was invalid.
+		return ErrInvalidRequest
+	case "MAX_ELEMENTS_EXCEEDED":
+		// indicates that the product of origins and destinations exceeds the per-query limit.
+		return ErrMaxElementsExceeded
+	case "OVER_QUERY_LIMIT":
+		// indicates the service has received too many requests from your application within the allowed time period.
+		return ErrOverQueryLimit
+	case "REQUEST_DENIED":
+		// indicates that the service denied use of the distance matrix service by your application.
+		return ErrRequestDenied
+	default:
+		// any other error such as UNKNOWN_ERROR indicates a distance matrix request could not be processed due to a server error.
+		// The request may succeed if you try again.
+		return ErrUnkownError
 	}
+
 	if len(apiResponse.Rows) != len(origins) {
-		return errors.New("API returned less rows than origins requested")
+		return ErrResponseRowsMismatch
 	}
+
 	for _, r := range apiResponse.Rows {
 		if len(r.Elements) != len(destinations) {
-			return errors.New("API returned less elements than destinations requested")
+			return ErrInvalidElementMismatch
 		}
 	}
 
