@@ -1,6 +1,7 @@
 package gogoogledm
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"math"
@@ -11,7 +12,8 @@ import (
 )
 
 const (
-	base_url     = "https://maps.googleapis.com/maps/api/distancematrix/json?"
+	base_host    = "https://maps.googleapis.com"
+	base_path    = "/maps/api/distancematrix/json?"
 	maxUrlLength = 2000
 )
 
@@ -49,7 +51,31 @@ func NewDistanceMatrixAPI(apiKey string, accountType AccountType, languageCode s
 		unitSystem:   unitSystem,
 		timeToWait:   10 * time.Second,
 	}
+	api.maxElementsPerRequest = maxElementsPerRequestFromAccountType(accountType)
 
+	return &api
+}
+
+func NewDistanceMatrixAPIWithClientIDAndSignature(clientID, codedCryptoKey string, accountType AccountType, languageCode string, unitSystem UnitSystem) (*DistanceMatrixAPI, error) {
+	// The coded crypt key is assumed to be URL modified Base64 encoded
+	decodedCryptoKey, err := base64.URLEncoding.DecodeString(codedCryptoKey)
+	if err != nil {
+		return nil, err
+	}
+
+	api := DistanceMatrixAPI{
+		clientID:     clientID,
+		cryptoKey:    decodedCryptoKey,
+		languageCode: languageCode,
+		unitSystem:   unitSystem,
+		timeToWait:   10 * time.Second,
+	}
+	api.maxElementsPerRequest = maxElementsPerRequestFromAccountType(accountType)
+
+	return &api, nil
+}
+
+func maxElementsPerRequestFromAccountType(accountType AccountType) int {
 	// Users of the free API:
 	// 100 elements per query.
 	// 100 elements per 10 seconds.
@@ -61,19 +87,16 @@ func NewDistanceMatrixAPI(apiKey string, accountType AccountType, languageCode s
 	// 100,000 elements per 24 hour period.
 	switch accountType {
 	case FreeAccount:
-		api.maxElementsPerRequest = 100
+		return 100
 	case GoogleForWorkAccount:
-		api.maxElementsPerRequest = 625
+		return 625
 	default:
 		panic("Unknown accountType")
 	}
-
-	return &api
 }
 
 func (api *DistanceMatrixAPI) buildBaseUrlParams() url.Values {
 	params := url.Values{}
-	params.Add("key", api.apiKey)
 	params.Add("language", api.languageCode)
 	params.Add("units", api.unitSystem.String())
 
@@ -109,12 +132,31 @@ func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations [
 	return &joinedResponse, nil
 }
 
+// Code taken from the generateAuthQuery function from google-maps-services-go
+func (api *DistanceMatrixAPI) generateAuthentifiedURL(urlValues url.Values) (string, error) {
+	if api.apiKey != "" {
+		urlValues.Add("key", api.apiKey)
+		return (base_host + base_path + urlValues.Encode()), nil
+	}
+
+	signedQuery, err := signURL(base_path, api.clientID, api.cryptoKey, urlValues)
+	if err != nil {
+		return "", err
+	}
+
+	return (base_host + base_path + signedQuery), nil
+}
+
 func (api *DistanceMatrixAPI) sendRequest(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
 	urlValues := api.buildBaseUrlParams()
 	urlValues.Add("mode", transportMode.String())
 	urlValues.Add("origins", coordinatesSliceToString(origins))
 	urlValues.Add("destinations", coordinatesSliceToString(destinations))
-	url := base_url + urlValues.Encode()
+
+	url, err := api.generateAuthentifiedURL(urlValues)
+	if err != nil {
+		return nil, err
+	}
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -181,7 +223,7 @@ func (api *DistanceMatrixAPI) numberOfApiCallsRequired(origins []Coordinates, de
 	//Number of calls required due to url length limitation
 	urlValues.Add("origins", coordinatesSliceToString(origins))
 	urlValues.Add("destinations", coordinatesSliceToString(destinations))
-	url := base_url + urlValues.Encode()
+	url := base_host + base_path + urlValues.Encode()
 	urlLength := len(url)
 	apiCallsRequiredByUrl := math.Ceil(float64(urlLength) / float64(maxUrlLength))
 
