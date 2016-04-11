@@ -7,6 +7,8 @@ import (
 
 type DistanceMatrixAPI struct {
 	apiKey                string
+	clientID              string
+	cryptoKey             []byte
 	maxElementsPerRequest int
 	timeToWait            time.Duration
 	languageCode          string
