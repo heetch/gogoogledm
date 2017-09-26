@@ -2,7 +2,11 @@ package main
 
 import (
 	"fmt"
-	. "github.com/jondunning/gogoogledm"
+	"time"
+
+	"golang.org/x/net/context"
+
+	. "github.com/heetch/gogoogledm"
 )
 
 func main() {
@@ -31,8 +35,13 @@ func main() {
 	}
 
 	transportMode := Driving //Driving, Walking and Bicycling
-	resp, err := api.GetDistances(origins, destinations, transportMode)
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	defer cancel()
+	resp, err := api.GetDistances(ctx, origins, destinations, transportMode)
 	if err != nil {
+		if ctx.Err() != nil {
+			// Request has timeouts
+		}
 		panic(err)
 	}
 

@@ -1,6 +1,7 @@
 package gogoogledm
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,7 +16,6 @@ const (
 	base_host    = "https://maps.googleapis.com"
 	base_path    = "/maps/api/distancematrix/json?"
 	maxUrlLength = 2000
-	maxRetries   = 3
 )
 
 var (
@@ -104,7 +104,7 @@ func (api *DistanceMatrixAPI) buildBaseUrlParams() url.Values {
 	return params
 }
 
-func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
+func (api *DistanceMatrixAPI) GetDistances(ctx context.Context, origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
 	apiRequestCount := api.numberOfApiCallsRequired(origins, destinations, transportMode)
 	groupedCoordinates := api.groupCoordinates(origins, destinations, apiRequestCount)
 
@@ -117,7 +117,7 @@ func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations [
 			remaining = api.maxElementsPerRequest
 		}
 
-		resp, err := api.sendRequest(group.Origins, group.Destinations, transportMode)
+		resp, err := api.sendRequest(ctx, group.Origins, group.Destinations, transportMode)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +148,7 @@ func (api *DistanceMatrixAPI) generateAuthentifiedURL(urlValues url.Values) (str
 	return (base_host + base_path + signedQuery), nil
 }
 
-func (api *DistanceMatrixAPI) sendRequest(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
+func (api *DistanceMatrixAPI) sendRequest(ctx context.Context, origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
 	urlValues := api.buildBaseUrlParams()
 	urlValues.Add("mode", transportMode.String())
 	urlValues.Add("origins", coordinatesSliceToString(origins))
@@ -159,18 +159,13 @@ func (api *DistanceMatrixAPI) sendRequest(origins []Coordinates, destinations []
 		return nil, err
 	}
 
-	client := http.Client{
-		Timeout: 500 * time.Millisecond,
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
 	}
+	req = req.WithContext(ctx)
 
-	var resp *http.Response
-
-	for retries := 0; retries < maxRetries; retries++ {
-		resp, err = client.Get(url)
-		if err != nil {
-			continue
-		}
-	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
