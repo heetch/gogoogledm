@@ -15,6 +15,7 @@ const (
 	base_host    = "https://maps.googleapis.com"
 	base_path    = "/maps/api/distancematrix/json?"
 	maxUrlLength = 2000
+	maxRetries   = 3
 )
 
 var (
@@ -158,10 +159,22 @@ func (api *DistanceMatrixAPI) sendRequest(origins []Coordinates, destinations []
 		return nil, err
 	}
 
-	resp, err := http.Get(url)
+	client := http.Client{
+		Timeout: 500 * time.Millisecond,
+	}
+
+	var resp *http.Response
+
+	for retries := 0; retries < maxRetries; retries++ {
+		resp, err = client.Get(url)
+		if err != nil {
+			continue
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
+
 	defer resp.Body.Close()
 
 	var apiResponse ApiResponse
