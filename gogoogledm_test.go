@@ -1,14 +1,18 @@
 package gogoogledm
 
 import (
+	"context"
 	"log"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestGetDistances(t *testing.T) {
 	apiKey := ""
 	api := NewDistanceMatrixAPI(apiKey, FreeAccount, "en-GB", ImperialUnit)
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	defer cancel()
 
 	origins := []Coordinates{
 		Coordinates{
@@ -36,24 +40,63 @@ func TestGetDistances(t *testing.T) {
 		},
 	}
 
-	resp, err := api.GetDistances(origins, destinations, Driving)
+	resp, err := api.GetDistances(ctx, origins, destinations, Driving)
 	if err != nil {
 		t.Error("Error getting distances")
-	}
-
-	if len(resp.Rows) != len(origins) {
-		t.Error("Origin rows not the same as the count sent")
-	}
-	for _, v := range resp.Rows {
-		if len(v.Elements) != len(destinations) {
+	} else {
+		if len(resp.Rows) != len(origins) {
 			t.Error("Origin rows not the same as the count sent")
 		}
+		for _, v := range resp.Rows {
+			if len(v.Elements) != len(destinations) {
+				t.Error("Origin rows not the same as the count sent")
+			}
+		}
+	}
+}
+func TestGetDistancesWithTimeout(t *testing.T) {
+	apiKey := ""
+	api := NewDistanceMatrixAPI(apiKey, FreeAccount, "en-GB", ImperialUnit)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+
+	origins := []Coordinates{
+		Coordinates{
+			Latitude:  55.853551,
+			Longitude: -4.311093,
+		},
+		Coordinates{
+			Latitude:  53.608092,
+			Longitude: -2.1469184,
+		},
+	}
+
+	destinations := []Coordinates{
+		Coordinates{
+			Latitude:  53.4720286,
+			Longitude: -2.3308237,
+		},
+		Coordinates{
+			Latitude:  51.556021,
+			Longitude: -0.279519,
+		},
+		Coordinates{
+			Latitude:  51.556023,
+			Longitude: -0.279522,
+		},
+	}
+
+	_, err := api.GetDistances(ctx, origins, destinations, Driving)
+	if err == nil || ctx.Err() == nil {
+		t.Error("GetDistances should have timeout")
 	}
 }
 
 func TestGetDistancesWithOver100Elements(t *testing.T) {
 	apiKey := ""
 	api := NewDistanceMatrixAPI(apiKey, FreeAccount, "en-GB", ImperialUnit)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 
 	origins := []Coordinates{
 		Coordinates{
@@ -75,19 +118,19 @@ func TestGetDistancesWithOver100Elements(t *testing.T) {
 		destinations = append(destinations, destination)
 	}
 
-	_, err := api.GetDistances(origins, destinations, Driving)
+	resp, err := api.GetDistances(ctx, origins, destinations, Driving)
 	if err != nil {
 		t.Error(err.Error())
+	} else {
+		if len(resp.Rows) != len(origins) {
+			t.Error("Row count does not match origin count")
+		}
+		for _, r := range resp.Rows {
+			if len(r.Elements) != len(destinations) {
+				t.Error("Element count does not match destination count")
+			}
+		}
 	}
-
-	// if len(resp.Rows) != len(origins) {
-	// 	t.Error("Row count does not match origin count")
-	// }
-	// for _, r := range resp.Rows {
-	// 	if len(r.Elements) != len(destinations) {
-	// 		t.Error("Element count does not match destination count")
-	// 	}
-	// }
 }
 
 func TestCoordinatesSliceToString(t *testing.T) {

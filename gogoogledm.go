@@ -1,6 +1,7 @@
 package gogoogledm
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -103,7 +104,7 @@ func (api *DistanceMatrixAPI) buildBaseUrlParams() url.Values {
 	return params
 }
 
-func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
+func (api *DistanceMatrixAPI) GetDistances(ctx context.Context, origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
 	apiRequestCount := api.numberOfApiCallsRequired(origins, destinations, transportMode)
 	groupedCoordinates := api.groupCoordinates(origins, destinations, apiRequestCount)
 
@@ -116,7 +117,7 @@ func (api *DistanceMatrixAPI) GetDistances(origins []Coordinates, destinations [
 			remaining = api.maxElementsPerRequest
 		}
 
-		resp, err := api.sendRequest(group.Origins, group.Destinations, transportMode)
+		resp, err := api.sendRequest(ctx, group.Origins, group.Destinations, transportMode)
 		if err != nil {
 			return nil, err
 		}
@@ -147,7 +148,7 @@ func (api *DistanceMatrixAPI) generateAuthentifiedURL(urlValues url.Values) (str
 	return (base_host + base_path + signedQuery), nil
 }
 
-func (api *DistanceMatrixAPI) sendRequest(origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
+func (api *DistanceMatrixAPI) sendRequest(ctx context.Context, origins []Coordinates, destinations []Coordinates, transportMode TransportMode) (*ApiResponse, error) {
 	urlValues := api.buildBaseUrlParams()
 	urlValues.Add("mode", transportMode.String())
 	urlValues.Add("origins", coordinatesSliceToString(origins))
@@ -158,10 +159,17 @@ func (api *DistanceMatrixAPI) sendRequest(origins []Coordinates, destinations []
 		return nil, err
 	}
 
-	resp, err := http.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
+	req = req.WithContext(ctx)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
 	defer resp.Body.Close()
 
 	var apiResponse ApiResponse
